@@ -1,0 +1,10 @@
+field,value,unit,note
+target_name,Brightpath Software,,"Fictional smaller competitor, same category"
+arr_usd,3200000,usd,Trailing ARR
+asking_price_usd,7500000,usd,"~2.3x ARR, seller expects mostly cash"
+gross_retention_pct,85,percent,Weaker than Copperline's; churn risk in migration
+monthly_opex_usd,180000,usd,Target's current run-rate opex
+headcount,14,count,Team acquired; 3 likely redundant roles
+integration_cost_usd,400000,usd,"One-time, spread over first 6 months post-close"
+expected_close,2026-11-01,date,"If pursued, closes Nov 1"
+revenue_synergy_note,Cross-sell est. +$25k net-new MRR/mo from month 7,,

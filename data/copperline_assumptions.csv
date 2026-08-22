@@ -1,0 +1,19 @@
+assumption,value,unit,editable_lever,note
+fiscal_year_end,2026-12-31,date,no,Calendar fiscal year
+fy26_arr_target,13500000,usd,no,Board plan: exit FY26 at $13.5M ARR
+fy27_arr_target,18000000,usd,no,Board plan: exit FY27 at $18M ARR (~49% growth)
+min_cash_covenant,3000000,usd,no,Venture debt covenant: cash never below $3.0M
+debt_drawn,4000000,usd,no,"Term loan drawn; 11% interest, interest-only through 2027"
+debt_available,500000,usd,no,Undrawn capacity on the venture debt line
+monthly_logo_churn_pct,1.8,percent,yes,Blended logo churn per month (LEVER)
+net_revenue_retention_pct,105,percent,yes,NRR annualized (LEVER)
+new_logos_per_month,12,count,yes,Current organic acquisition pace (LEVER)
+price_increase_pct,0,percent,yes,"Price increase at renewal, effective Oct 1 (LEVER)"
+new_ae_hires,4,count,yes,Planned AE hires for the Q4 bookings ramp (LEVER)
+new_ae_start_date,2026-12-01,date,yes,AE start date in current plan (LEVER) -- see conflict
+ae_ramp_months,3,months,no,Months before a new AE reaches full productivity
+ae_quota_net_new_mrr,22000,usd_per_month,no,Net-new MRR per fully ramped AE per month
+q4_net_new_mrr_required,350000,usd,no,Net-new MRR needed in Q4 to stay on the FY27 ramp
+loaded_cost_per_ae,16500,usd_per_month,no,Fully loaded monthly cost per AE
+merit_increase_jan27_pct,4,percent,no,Company-wide merit increase effective Jan 2027
+enterprise_renewals_at_risk_mrr,42000,usd,no,Two enterprise logos flagged at-risk for Nov renewal
