@@ -1,3 +1,7 @@
+# Streamlit Community Cloud rebuilds the environment when this file changes,
+# which forces a fresh container. A plain source push can leave a previously
+# imported module cached in sys.modules, so app.py updates while charts.py does
+# not — see docs/06-work-list.md.
 streamlit>=1.49
 pandas>=2.0
 plotly>=5.20
