@@ -11,11 +11,25 @@ investment advice.**
 
 ## Run it
 
+One line, clone to running:
+
 ```bash
-pip install -r requirements.txt
-cp .env.example .env && $EDITOR .env      # add your key — only needed for Screen 3
-streamlit run app.py
+git clone https://github.com/PatrickMcCrann/floyd-cockpit && cd floyd-cockpit && pip install -r requirements.txt && streamlit run app.py
 ```
+
+**No API key is needed to run it.** Screens 1 and 2 — the actuals, the forecast, the
+scenario levers, and the Plan Integrity Check — are fully functional without one,
+because every number in this tool is computed by Pandas, not by a model.
+
+Screen 3 writes the CFO memo with Claude, so it needs a key. Add one either way:
+
+```bash
+cp .env.example .env && $EDITOR .env      # ANTHROPIC_API_KEY=sk-ant-...
+```
+
+or paste a key straight into the sidebar field at runtime. To see the memo without a
+key at all, `docs/05-reference-memo.md` is a full unedited Screen 3 output, with every
+figure traced back to the model.
 
 That is the whole setup. The three CSVs in `/data` are bundled — there is no uploader
 and no integration. Screens 1 and 2 work with no key at all.
