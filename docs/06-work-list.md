@@ -6,8 +6,9 @@ first, with broken-before-polish as the tiebreaker.
 Every claim in here was verified against the model, not eyeballed. The numbers
 quoted are reproducible from `run_forecast` on the plan of record.
 
-**If time runs short before the Loom: do P0-3, P2-8, P0-2 and P1-5, and stop.**
-Those four are most of the perceived improvement.
+**Status: P0 and P1 are done, plus the chart work in P2.** Remaining open items
+are P3-12 (facility as an input) and P4-13 (the live readout), plus the ramp
+judgement in P0-1.
 
 Effort: `S` under 30 min · `M` 1–2 h · `L` half day+
 
@@ -15,7 +16,7 @@ Effort: `S` under 30 min · `M` 1–2 h · `L` half day+
 
 ## P0 — Broken or actively misleading
 
-### [ ] 1. The AE hires lever is inert under the plan of record `S`
+### [~] 1. The AE hires lever is inert under the plan of record `S` — *partly addressed*
 
 Moving the slider from 0 to 10 hires produces **byte-identical FY26 ARR**.
 Only cash moves, and only downward — so the flagship lever reads as pure cost
@@ -36,11 +37,16 @@ Two causes stack:
 So a December start yields zero AE revenue inside FY26 by construction. Move the
 start to September and 10 hires takes FY26 ARR to **$17.78M**.
 
-**Do:** decide whether month 1 should really be zero, and make the start date
-prominent (see P1-6). P2-8 also mitigates this by rendering a zero delta as two
-lines sitting on top of each other rather than as nothing happening.
+**Done:** the sidebar now warns that a rep books nothing in month 1, so a late
+start contributes nothing to FY26; and the baseline overlay (P2-11) renders a
+zero delta as two lines sitting on top of each other rather than as nothing
+happening.
 
-### [ ] 2. "Net burn (3-mo avg)" on Screen 1 can never change `S`
+**Still open, and it is your call:** whether ramp month 1 should really be 0.00.
+That is a modelling judgement, not a bug — a rep genuinely may book nothing in
+their first month. Left as-is deliberately.
+
+### [x] 2. "Net burn (3-mo avg)" on Screen 1 can never change `S`
 
 `app.py:317` renders `actuals.net_burn_trailing_3mo` — the trailing average of
 **actuals** (Jun–Aug 2026). No lever can move it, ever. It sits beside live
@@ -50,7 +56,7 @@ controls, so it reads as a broken live number.
 correctly — Dec 2026 goes $410K → $575K between 0 and 10 hires, exactly
 10 × $16,500 — but that figure only appears in the monthly table.
 
-### [ ] 3. Revenue-up and covenant-broken must read as one fact `M`
+### [x] 3. Revenue-up and covenant-broken must read as one fact `M`
 
 **The single most important item on this list.** Acquiring Brightpath at the
 asking price:
@@ -73,13 +79,13 @@ subordinate to it, not adjacent.
 
 Screen 1 is a fixed baseline. Screen 2 is where things move. Screen 3 publishes.
 
-### [ ] 4. Remove the levers from Screen 1 `S`
+### [x] 4. Remove the levers from Screen 1 `S`
 
 Levers live in a global sidebar visible on every screen. Screen 1 is built from
 historical actuals, so moving a control there changes nothing — correct
 behaviour that feels broken. This is the root cause of the confusion.
 
-### [ ] 5. Framing paragraph at the top of Screen 1 `S`
+### [x] 5. Framing paragraph at the top of Screen 1 `S`
 
 Who built this, who it is for, what decision is on the table, and that the levers
 come next. Roughly:
@@ -90,17 +96,17 @@ come next. Roughly:
 > against acquiring, this page is where we stand today — the fixed starting point.
 > The Decision Studio is where you change it.
 
-### [ ] 6. Move the AE start date to Screen 2 and give it weight `S`
+### [x] 6. Move the AE start date to Screen 2 and give it weight `S`
 
 It is the master switch that makes hiring mean anything (see P0-1), not just
 another slider in the stack.
 
-### [ ] 7. Show the starting assumptions on Screen 1 `M`
+### [x] 7. Show the starting assumptions on Screen 1 `M`
 
 You cannot evaluate a deal whose price you have never been shown. Screen 1 needs
 the givens, including everything in P1-8 and P1-9 below.
 
-### [ ] 8. Financing panel on Screen 1 — the debt is invisible `M`
+### [x] 8. Financing panel on Screen 1 — the debt is invisible `M`
 
 Interest **is** correctly inside the burn: `total_opex = payroll + other_opex +
 interest + acq_opex + integration` (`model.py:325`), so the math is right. But
@@ -121,7 +127,7 @@ Also state the financing posture explicitly: **this tool does not model a new
 equity round.** That gives the bootstrapped-feeling constraint without
 contradicting the brief's Series B framing, which the venture debt implies.
 
-### [ ] 9. Brightpath callout box on Screen 1, and in the memo `M`
+### [x] 9. Brightpath callout box on Screen 1, and in the memo `M`
 
 All of this is in the CSV and none of it is shown:
 
@@ -143,7 +149,7 @@ look for and not currently find:
 > contribution before synergies**. After eliminating 3 redundant roles and
 > layering in cross-sell, roughly **$1.45M/yr** — a **~5-year payback** on $7.5M.
 
-### [ ] 10. Show that cash is spoken for `M`
+### [x] 10. Show that cash is spoken for `M`
 
 Cash can rise in year one while being fully committed to the acquisition, and
 nothing on screen says so. A reader who is not a finance specialist reads the
@@ -155,7 +161,7 @@ outflows — so "we have money" and "we can spend money" stop looking identical.
 
 ## P2 — Charts
 
-### [ ] 11. Keep the plan of record on screen, and re-map the colours `M`
+### [x] 11. Keep the plan of record on screen, and re-map the colours `M`
 
 Highest-leverage visual change on the list: it makes every lever
 self-explanatory, because you can always see what you changed *from*.
