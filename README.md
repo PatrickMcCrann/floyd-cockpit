@@ -9,6 +9,10 @@ covenant, and capacity.
 **All data is synthetic. Fictional company. Not financial, accounting, tax, legal or
 investment advice.**
 
+## Try it
+
+**Live, no setup, no API key:** https://thesuiteforecasting.streamlit.app
+
 ## Run it
 
 One line, clone to running:
