@@ -826,7 +826,11 @@ else:
     memo = st.session_state.get("memo")
     if memo:
         with st.container(border=True):
-            st.markdown(memo)
+            # Escape on display only. Streamlit reads $...$ as LaTeX, and a CFO memo
+            # is almost entirely dollar figures, so an unescaped memo renders
+            # "$12.56M against a $13.50M target" as italic maths. The download keeps
+            # the raw text so the .md file has plain dollar signs.
+            st.markdown(esc_md(memo))
         st.download_button(
             "Download memo (Markdown)", memo,
             file_name=f"copperline-cfo-memo-{actuals.last_month}.md",
