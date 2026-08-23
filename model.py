@@ -64,6 +64,7 @@ class Scenario:
     acquire_brightpath: bool
     acquisition_price: float
     acquisition_debt_draw: float         # drawn from the undrawn line, rest is cash
+    debt_facility: float                 # undrawn capacity available to draw against
 
     @classmethod
     def from_defaults(cls) -> "Scenario":
@@ -80,6 +81,7 @@ class Scenario:
             acquire_brightpath=False,
             acquisition_price=float(t["asking_price_usd"]),
             acquisition_debt_draw=0.0,
+            debt_facility=float(a["debt_available"]),
         )
 
     def as_dict(self) -> dict:
@@ -304,7 +306,7 @@ def run_forecast(scenario: Scenario) -> pd.DataFrame:
             acq_opex = bp_opex - (bp_opex * 3.0 / bp_headcount if since >= 3 else 0.0)
             integration = bp_integration_total / 6.0 if since <= 6 else 0.0
             if since == 1:
-                draw = min(scenario.acquisition_debt_draw, float(a["debt_available"]))
+                draw = min(scenario.acquisition_debt_draw, scenario.debt_facility)
                 one_time = scenario.acquisition_price - draw
                 debt += draw
         d_acq = acq_mrr - acq_prev

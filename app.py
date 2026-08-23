@@ -111,6 +111,105 @@ def months_label(m: float) -> str:
     return f"{m:.0f} months"
 
 
+def scenario_deltas(sc, base, tgt) -> list[str]:
+    """Plain-language list of what this scenario changed, in the user's terms."""
+    out = []
+    if sc.new_logos_per_month != base.new_logos_per_month:
+        out.append(f"new logos {base.new_logos_per_month:.0f} → {sc.new_logos_per_month:.0f} a month")
+    if sc.monthly_logo_churn_pct != base.monthly_logo_churn_pct:
+        out.append(f"churn {base.monthly_logo_churn_pct:.1f}% → {sc.monthly_logo_churn_pct:.1f}% a month")
+    if sc.net_revenue_retention_pct != base.net_revenue_retention_pct:
+        out.append(f"NRR {base.net_revenue_retention_pct:.0f}% → {sc.net_revenue_retention_pct:.0f}%")
+    if sc.price_increase_pct != base.price_increase_pct:
+        out.append(f"a {sc.price_increase_pct:.0f}% price increase at renewal")
+    if sc.new_ae_hires != base.new_ae_hires:
+        out.append(f"AE hires {base.new_ae_hires} → {sc.new_ae_hires}")
+    if sc.new_ae_start != base.new_ae_start:
+        out.append(f"AE start {base.new_ae_start} → {sc.new_ae_start}")
+    if sc.at_risk_renewals_haircut != base.at_risk_renewals_haircut:
+        out.append("the at-risk enterprise renewals taken as lost")
+    if sc.acquire_brightpath != base.acquire_brightpath:
+        out.append(f"acquiring {tgt['target_name']} at {money(sc.acquisition_price)}")
+    elif sc.acquire_brightpath and sc.acquisition_price != base.acquisition_price:
+        out.append(f"a {money(sc.acquisition_price)} purchase price")
+    if sc.debt_facility != base.debt_facility:
+        out.append(f"the facility raised to {money(sc.debt_facility, 0)}")
+    if sc.acquisition_debt_draw != base.acquisition_debt_draw:
+        out.append(f"{money(sc.acquisition_debt_draw, 0)} drawn from the facility")
+    return out
+
+
+def plain_readout(sc, base, m, pm, fcst, por_fcst, tgt) -> str:
+    """A deterministic English summary of the active scenario.
+
+    Sits between moving a lever and paying for a memo: the memo costs money and
+    takes seconds, so nobody generates one per toggle. Written by arithmetic,
+    not by the model.
+
+    Returns HTML, not Markdown: it is rendered inside an unsafe_allow_html card,
+    where `**bold**` would come out as literal asterisks.
+    """
+    cov = m["covenant"]
+    changes = scenario_deltas(sc, base, tgt)
+    if changes:
+        joined = changes[0] if len(changes) == 1 else (
+            ", ".join(changes[:-1]) + " and " + changes[-1])
+        opener = f"<b>You changed {joined}.</b>"
+    else:
+        opener = "<b>This is the plan of record — nothing has been changed yet.</b>"
+
+    arr_delta = m["fy26_exit_arr"] - pm["fy26_exit_arr"]
+    moved = abs(arr_delta) >= 5_000
+    if moved:
+        vs_plan = (f", {money(abs(arr_delta))} "
+                   f"{'more' if arr_delta > 0 else 'less'} than the plan of record")
+    elif changes:
+        vs_plan = ", unchanged from the plan of record"
+    else:
+        vs_plan = ""
+    vs_target = (f"{money(abs(m['fy26_variance']))} "
+                 f"{'ahead of' if m['fy26_variance'] >= 0 else 'short of'} the board target")
+    # "and" only reads correctly when a clause precedes it.
+    rev = (f"FY26 exits at {money(m['fy26_exit_arr'])}{vs_plan}"
+           + (f", and {vs_target}. " if vs_plan else f", {vs_target}. "))
+
+    trough = f"{money(cov['trough_cash'])} in {cov['trough_month']}"
+    if cov["breach"]:
+        cash = (f"Cash troughs at {trough}, below the "
+                f"{money(cov['min_cash_covenant'])} floor from {cov['first_breach_month']}. ")
+    else:
+        cash = (f"Cash troughs at {trough}, holding "
+                f"{money(cov['headroom'])} above the floor. ")
+
+    interest_total = float(fcst["interest"].sum())
+    interest_base = float(por_fcst["interest"].sum())
+    extra = interest_total - interest_base
+    debt_note = (
+        f"Interest runs {money(interest_total)} across the horizon"
+        + (f", {money(extra)} more than the plan of record. " if extra >= 500 else ". ")
+    )
+
+    if cov["breach"]:
+        watch = ("<b>The binding constraint is the covenant, not growth</b> — this path defaults "
+                 "the loan before the revenue arrives.")
+    elif m["runway_months_from_dec_2026"] < 12:
+        watch = (f"<b>The binding constraint is runway</b> — "
+                 f"{months_label(m['runway_months_from_dec_2026'])} from Dec 2026.")
+    elif m["fy26_variance"] < 0:
+        watch = (f"<b>The binding constraint is the FY26 gap</b> — "
+                 f"{money(abs(m['fy26_variance']))} short, or "
+                 f"{money(abs(m['fy26_variance']) / 12 / 4, 0)} of net-new MRR a month "
+                 f"across the four months that remain.")
+    elif m["q4_2026_net_new_mrr"] < m["q4_2026_net_new_mrr_required"]:
+        watch = (f"<b>The binding constraint is Q4 bookings</b> — "
+                 f"{money(m['q4_2026_net_new_mrr'], 0)} against the "
+                 f"{money(m['q4_2026_net_new_mrr_required'], 0)} the FY27 ramp requires.")
+    else:
+        watch = "<b>No rule fires against this scenario.</b> It clears revenue, cash and covenant."
+
+    return opener + " " + rev + cash + debt_note + watch
+
+
 def render_flags(flags: list, verdict: str) -> None:
     color = charts.CRITICAL if "at risk" in verdict else (
         charts.WARNING if "qualified" in verdict else charts.GOOD
@@ -175,6 +274,7 @@ LEVER_DEFAULTS = {
     "acquire": bool(defaults.acquire_brightpath),
     "acq_price_m": float(defaults.acquisition_price) / 1e6,
     "acq_draw_k": 0,
+    "facility_k": int(float(assumptions["debt_available"]) / 1e3),
 }
 
 
@@ -235,13 +335,29 @@ if show_levers:
     keep("acq_price_m", st.sidebar.slider(
         "Purchase price ($M)", 4.0, 10.0, lv("acq_price_m"), 0.1,
         key="lever_acq_price", disabled=not lv("acquire")))
+    st.sidebar.markdown("_Financing_")
+    keep("facility_k", st.sidebar.slider(
+        "Undrawn facility available ($K)", 0, 6000, lv("facility_k"), 250,
+        key="lever_facility",
+        help="The plan of record has $500K left on the venture line. That is thin against "
+             "$12M of ARR, and it makes borrow-versus-don't a choice you cannot actually "
+             "explore. Raise it to test what a larger facility would buy — the default is "
+             "the figure in the supplied data.",
+    ))
+    draw_cap = max(int(lv("facility_k")), 0)
     keep("acq_draw_k", st.sidebar.slider(
-        "Funded from the undrawn line ($K)", 0, int(float(assumptions["debt_available"]) / 1e3),
-        lv("acq_draw_k"), 50, key="lever_acq_draw", disabled=not lv("acquire")))
+        "Funded from the facility ($K)", 0, max(draw_cap, 1),
+        min(lv("acq_draw_k"), draw_cap), 50,
+        key="lever_acq_draw", disabled=not lv("acquire") or draw_cap == 0))
     if lv("acquire"):
         st.sidebar.caption(esc_md(
             f"Balance out of cash: {money(lv('acq_price_m') * 1e6 - lv('acq_draw_k') * 1e3)}. "
             f"Closes {str(target['expected_close'])[:7]}."
+        ))
+    if lv("facility_k") != LEVER_DEFAULTS["facility_k"]:
+        st.sidebar.caption(esc_md(
+            f"Facility raised from {money(float(assumptions['debt_available']), 0)} to "
+            f"{money(lv('facility_k') * 1e3, 0)} — a deviation from the supplied data."
         ))
 else:
     st.sidebar.divider()
@@ -255,6 +371,7 @@ ae_hires, ae_start = lv("aes"), lv("ae_start")
 haircut, acquire = lv("haircut"), lv("acquire")
 acq_price = lv("acq_price_m") * 1e6
 acq_draw = lv("acq_draw_k") * 1e3
+facility = lv("facility_k") * 1e3
 
 st.sidebar.divider()
 api_key = st.sidebar.text_input(
@@ -301,6 +418,7 @@ scenario = Scenario(
     acquire_brightpath=bool(acquire),
     acquisition_price=float(acq_price),
     acquisition_debt_draw=float(acq_draw),
+    debt_facility=float(facility),
 )
 
 actuals = summarize_actuals()
@@ -538,6 +656,15 @@ elif screen.startswith("2"):
         f"breach — trough {cov['trough_month']}" if cov["breach"]
         else f"trough {cov['trough_month']}",
         delta_color="off",
+    )
+
+    st.markdown(
+        f'<div class="flag-card" style="border-left-color:{charts.VIOLET};">'
+        f'<div class="flag-sev" style="color:{charts.VIOLET};">◆ What this scenario does</div>'
+        f'<div class="flag-body">'
+        f'{esc_html(plain_readout(scenario, defaults, metrics, por_metrics, fc, por_fc, target))}'
+        f'</div></div>',
+        unsafe_allow_html=True,
     )
 
     # A scenario that buys the revenue number by breaking the covenant is the

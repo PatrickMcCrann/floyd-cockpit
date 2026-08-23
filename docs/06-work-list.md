@@ -6,9 +6,14 @@ first, with broken-before-polish as the tiebreaker.
 Every claim in here was verified against the model, not eyeballed. The numbers
 quoted are reproducible from `run_forecast` on the plan of record.
 
-**Status: P0 and P1 are done, plus the chart work in P2.** Remaining open items
-are P3-12 (facility as an input) and P4-13 (the live readout), plus the ramp
-judgement in P0-1.
+**Status: every item is done except the ramp judgement in P0-1, which is a
+modelling call rather than a fix and is left to the owner.**
+
+Deployment note: a source-only push can leave Streamlit Cloud running new
+`app.py` against a cached `charts.py`, which threw `TypeError` on Screen 2 while
+Screen 1 looked fine. Reboot from the dashboard, or touch `requirements.txt` to
+force an environment rebuild — and verify on a screen that exercises the changed
+module, not just the landing page.
 
 Effort: `S` under 30 min · `M` 1–2 h · `L` half day+
 
@@ -180,7 +185,7 @@ also why "forecast versus predicted" felt slippery: orange currently means
 
 ## P3 — Model realism
 
-### [ ] 12. Make the facility size an adjustable input, default $500K `M`
+### [x] 12. Make the facility size an adjustable input, default $500K `M`
 
 $500K of undrawn capacity against $12M ARR and $8.7M cash is thin, and it makes
 the financing lever nearly meaningless — you cannot explore borrow-versus-don't
@@ -194,7 +199,7 @@ interest through the horizon — so borrowing has a visible price.
 
 ## P4 — The feedback layer
 
-### [ ] 13. Always-on plain-language readout on Screen 2 `M`
+### [x] 13. Always-on plain-language readout on Screen 2 `M`
 
 There is a gap between moving a slider and generating a memo: the memo costs
 money and takes seconds, so nobody generates one per toggle. A live one-liner
