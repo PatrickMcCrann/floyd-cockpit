@@ -72,9 +72,9 @@ def arr_trajectory(
     """ARR over time.
 
     Colour carries meaning and is consistent across every chart in the app:
-    blue is the status quo — what actually happened, and where the plan of record
+    blue is the status quo — what actually happened, and where the present day plan
     leads if nobody intervenes. Orange is the intervention, the scenario the user
-    built. Pass `baseline` (a plan-of-record series) to keep the do-nothing path
+    built. Pass `baseline` (a present-day-plan series) to keep the do-nothing path
     on screen as a blue dotted reference, so the delta a lever produced is visible
     rather than remembered.
     """
@@ -94,13 +94,13 @@ def arr_trajectory(
         b_fc = baseline[baseline["kind"] == "forecast"]
         b = _bridged(b_act, b_fc, "arr")
         fig.add_trace(go.Scatter(
-            x=b["month"], y=b["arr"] / 1e6, name="Plan of record", mode="lines",
+            x=b["month"], y=b["arr"] / 1e6, name="Present day plan", mode="lines",
             line=dict(color=BLUE, width=2, dash="dot"),
-            hovertemplate="%{x}<br>$%{y:.2f}M<extra>Plan of record</extra>",
+            hovertemplate="%{x}<br>$%{y:.2f}M<extra>Present day plan</extra>",
         ))
     fig.add_trace(go.Scatter(
         x=bridge["month"], y=bridge["arr"] / 1e6,
-        name="This scenario" if has_baseline else "Plan of record forecast", mode="lines",
+        name="This scenario" if has_baseline else "Present day plan", mode="lines",
         line=dict(
             color=ORANGE if has_baseline else BLUE,
             width=2, dash="solid" if has_baseline else "dot",
@@ -122,8 +122,8 @@ def cash_and_covenant(
 ) -> go.Figure:
     """Cash against the covenant floor. Breach months are marked, not implied.
 
-    See `arr_trajectory` for the colour rule. `baseline` overlays the plan of
-    record so the cash cost of a decision is visible as a gap, not a memory.
+    See `arr_trajectory` for the colour rule. `baseline` overlays the present day
+    plan so the cash cost of a decision is visible as a gap, not a memory.
     """
     act = series[series["kind"] == "actual"]
     fc = series[series["kind"] == "forecast"]
@@ -150,13 +150,13 @@ def cash_and_covenant(
         b = pd.concat([baseline[baseline["kind"] == "actual"].tail(1),
                        baseline[baseline["kind"] == "forecast"]], ignore_index=True)
         fig.add_trace(go.Scatter(
-            x=b["month"], y=b["cash"] / 1e6, name="Plan of record", mode="lines",
+            x=b["month"], y=b["cash"] / 1e6, name="Present day plan", mode="lines",
             line=dict(color=BLUE, width=2, dash="dot"),
-            hovertemplate="%{x}<br>$%{y:.2f}M<extra>Plan of record</extra>",
+            hovertemplate="%{x}<br>$%{y:.2f}M<extra>Present day plan</extra>",
         ))
     fig.add_trace(go.Scatter(
         x=bridge["month"], y=bridge["cash"] / 1e6,
-        name="This scenario" if has_baseline else "Plan of record forecast", mode="lines",
+        name="This scenario" if has_baseline else "Present day plan", mode="lines",
         line=dict(
             color=ORANGE if has_baseline else BLUE,
             width=2, dash="solid" if has_baseline else "dot",
@@ -199,9 +199,9 @@ def burn_chart(series: pd.DataFrame, baseline: pd.DataFrame | None = None) -> go
     if has_baseline:
         b_fc = baseline[baseline["kind"] == "forecast"]
         fig.add_trace(go.Bar(
-            x=b_fc["month"], y=b_fc["net_burn"] / 1e3, name="Plan of record",
+            x=b_fc["month"], y=b_fc["net_burn"] / 1e3, name="Present day plan",
             marker=dict(color="rgba(42,120,214,0.18)", line=dict(width=1.5, color=BLUE)),
-            hovertemplate="%{x}<br>$%{y:,.0f}K<extra>Plan of record</extra>",
+            hovertemplate="%{x}<br>$%{y:,.0f}K<extra>Present day plan</extra>",
         ))
         fig.add_trace(go.Bar(
             x=fc["month"], y=fc["net_burn"] / 1e3, name="This scenario",
@@ -210,7 +210,7 @@ def burn_chart(series: pd.DataFrame, baseline: pd.DataFrame | None = None) -> go
         ))
     else:
         fig.add_trace(go.Bar(
-            x=fc["month"], y=fc["net_burn"] / 1e3, name="Plan of record forecast",
+            x=fc["month"], y=fc["net_burn"] / 1e3, name="Present day plan",
             marker=dict(color="rgba(42,120,214,0.18)", line=dict(width=1.5, color=BLUE)),
             hovertemplate="%{x}<br>$%{y:,.0f}K<extra>Forecast</extra>",
         ))

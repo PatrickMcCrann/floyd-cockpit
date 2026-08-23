@@ -109,6 +109,13 @@ class ActualsSummary:
     net_new_mrr_trailing_3mo: float
     fy26_target: float
     gap_to_fy26_target: float
+    # Sales performance in the unit a reader actually has intuition for. An AE
+    # quota denominated in MRR means nothing until it is expressed as customers
+    # per month against what the team is landing today.
+    blended_arpu: float
+    new_logos_trailing_3mo: float
+    new_logos_ytd_mean: float
+    churned_logos_trailing_3mo: float
 
 
 def summarize_actuals() -> ActualsSummary:
@@ -125,6 +132,9 @@ def summarize_actuals() -> ActualsSummary:
     net_new_3 = (mrr_now - mrr_3_ago) / 3.0
 
     mrr_prev = float(df["mrr_usd"].iloc[-2])
+
+    customers_now = int(last["core_customers"] + last["enterprise_customers"])
+    blended_arpu = mrr_now / customers_now if customers_now else 0.0
 
     return ActualsSummary(
         last_month=str(last["month"]),
@@ -144,6 +154,10 @@ def summarize_actuals() -> ActualsSummary:
         net_new_mrr_trailing_3mo=net_new_3,
         fy26_target=float(a["fy26_arr_target"]),
         gap_to_fy26_target=float(a["fy26_arr_target"]) - float(last["arr_usd"]),
+        blended_arpu=blended_arpu,
+        new_logos_trailing_3mo=float(df["new_logos"].tail(3).mean()),
+        new_logos_ytd_mean=float(df["new_logos"].mean()),
+        churned_logos_trailing_3mo=float(df["churned_logos"].tail(3).mean()),
     )
 
 

@@ -1,8 +1,8 @@
-"""Floyd — Growth Decision Cockpit (Copperline, fictional).
+"""Growth Decision Cockpit — Copperline (fictional).
 
 Run:  streamlit run app.py
 
-Three screens: Where we stand, Decision studio, The memo. All math is deterministic
+Three screens: Present Day, Decision Studio, Final Decision. All math is deterministic
 and computed in model.py; the LLM writes narrative only, from computed metrics.
 """
 from __future__ import annotations
@@ -27,7 +27,7 @@ from model import (
 )
 from narrative import NarrativeError, build_payload, generate_memo
 
-st.set_page_config(page_title="Floyd — Growth Decision Cockpit", page_icon="◆", layout="wide")
+st.set_page_config(page_title="Copperline — Growth Decision Cockpit", page_icon="◆", layout="wide")
 
 SEVERITY_STYLE = {
     "critical": (charts.CRITICAL, "▲", "Critical"),
@@ -103,6 +103,20 @@ def esc_html(s: str) -> str:
     return s.replace("$", "&#36;")
 
 
+def days_to(target_date: str) -> int:
+    """Days from the close of the actuals to a fixed date in the scenario.
+
+    Anchored to the last actual month-end, not to today's real clock: the story
+    is set at 2026-08-31 and the deadlines have to move with the data, not with
+    whenever someone happens to open the app.
+    """
+    from datetime import date
+    y, m, d = (int(x) for x in target_date.split("-"))
+    ly, lm = (int(x) for x in summarize_actuals().last_month.split("-"))
+    last_day = date(ly + (lm // 12), (lm % 12) + 1, 1) - __import__("datetime").timedelta(days=1)
+    return (date(y, m, d) - last_day).days
+
+
 def months_label(m: float) -> str:
     if m == float("inf"):
         return "n/a — cash-flow positive"
@@ -156,15 +170,15 @@ def plain_readout(sc, base, m, pm, fcst, por_fcst, tgt) -> str:
             ", ".join(changes[:-1]) + " and " + changes[-1])
         opener = f"<b>You changed {joined}.</b>"
     else:
-        opener = "<b>This is the plan of record — nothing has been changed yet.</b>"
+        opener = "<b>This is the present day plan — nothing has been changed yet.</b>"
 
     arr_delta = m["fy26_exit_arr"] - pm["fy26_exit_arr"]
     moved = abs(arr_delta) >= 5_000
     if moved:
         vs_plan = (f", {money(abs(arr_delta))} "
-                   f"{'more' if arr_delta > 0 else 'less'} than the plan of record")
+                   f"{'more' if arr_delta > 0 else 'less'} than the present day plan")
     elif changes:
-        vs_plan = ", unchanged from the plan of record"
+        vs_plan = ", unchanged from the present day plan"
     else:
         vs_plan = ""
     vs_target = (f"{money(abs(m['fy26_variance']))} "
@@ -186,7 +200,7 @@ def plain_readout(sc, base, m, pm, fcst, por_fcst, tgt) -> str:
     extra = interest_total - interest_base
     debt_note = (
         f"Interest runs {money(interest_total)} across the horizon"
-        + (f", {money(extra)} more than the plan of record. " if extra >= 500 else ". ")
+        + (f", {money(extra)} more than the present day plan. " if extra >= 500 else ". ")
     )
 
     if cov["breach"]:
@@ -248,16 +262,16 @@ notes = load_assumption_notes()
 target = load_target()
 defaults = Scenario.from_defaults()
 
-st.sidebar.markdown("### ◆ Floyd")
-st.sidebar.caption("Growth Decision Cockpit — Copperline (fictional, synthetic data)")
+st.sidebar.markdown("### ◆ Growth Decision Cockpit")
+st.sidebar.caption("Copperline · a fictional company, synthetic data")
 
 screen = st.sidebar.radio(
     "Screen",
-    ["1 · Where we stand", "2 · Decision studio", "3 · The memo"],
+    ["1 · Present Day", "2 · Decision Studio", "3 · Final Decision"],
     label_visibility="collapsed",
 )
 
-show_levers = not screen.startswith("1")
+show_levers = screen.startswith("2")
 
 # Lever values are mirrored into `val_*` keys because Screen 1 deliberately does
 # not render the widgets, and Streamlit discards widget state for any widget it
@@ -292,7 +306,7 @@ if show_levers:
     st.sidebar.divider()
     st.sidebar.markdown("**Levers**")
 
-    if st.sidebar.button("Reset to plan of record", width="stretch"):
+    if st.sidebar.button("Reset to the present day plan", width="stretch"):
         for k in list(st.session_state.keys()):
             if k.startswith(("lever_", "val_")):
                 del st.session_state[k]
@@ -359,11 +373,17 @@ if show_levers:
             f"Facility raised from {money(float(assumptions['debt_available']), 0)} to "
             f"{money(lv('facility_k') * 1e3, 0)} — a deviation from the supplied data."
         ))
+elif screen.startswith("1"):
+    st.sidebar.divider()
+    st.sidebar.caption(
+        "This screen is the fixed baseline — the present day plan, before any decision. "
+        "The levers live in the Decision Studio."
+    )
 else:
     st.sidebar.divider()
     st.sidebar.caption(
-        "This screen is the fixed baseline — the plan of record, before any decision. "
-        "The levers live in the Decision studio."
+        "The memo is written for whatever the Decision Studio is set to. To change the "
+        "scenario, go back to screen 2 — the settings in force are shown on the page."
     )
 
 new_logos, churn, nrr, price = lv("logos"), lv("churn"), lv("nrr"), lv("price")
@@ -447,7 +467,7 @@ else:
 # SCREEN 1 — Where we stand
 # ============================================================================
 if screen.startswith("1"):
-    st.title("Where we stand")
+    st.title("Present Day")
     st.caption(
         f"Copperline · actuals through {actuals.last_month} · "
         f"{actuals.customers} customers · {actuals.headcount} heads"
@@ -461,9 +481,15 @@ if screen.startswith("1"):
         f"{money(float(assumptions['fy27_arr_target']))} next — roughly 49% growth — and the "
         "CEO wants to accelerate to get there, by hiring account executives, by acquiring "
         f"{target['target_name']}, or both.\n\n"
-        "**This page is the fixed starting point: the plan of record, before any decision.** "
-        "Nothing here moves. The Decision studio is where you change it, and the memo is "
-        "where you publish the result."
+        "**This page is the fixed starting point: the present day plan, before any decision.** "
+        "Nothing here moves.\n\n"
+        f"**The clock is the constraint.** Q4 opens {days_to('2026-10-01')} days from the close of "
+        f"these books, and a renewal price increase only bites from Oct 1. "
+        f"{target['target_name']} closes {days_to('2026-11-01')} days out, on "
+        f"{str(target['expected_close'])[:10]} — after that the option is gone. Account "
+        f"executives hired today do not carry full quota until "
+        f"{int(assumptions['ae_ramp_months'])} months after they start, which is why the "
+        f"start date matters more than the headcount."
     ))
 
     run_rate_fy26 = por_metrics["fy26_exit_arr"]
@@ -502,24 +528,35 @@ if screen.startswith("1"):
         f"{money(actuals.gap_to_fy26_target / 12, 0)} of MRR to close", delta_color="off",
     )
 
-    st.divider()
-    left, right = st.columns([3, 2])
-    with left:
-        st.markdown("**ARR trajectory**")
-        st.plotly_chart(
-            charts.arr_trajectory(
-                por_series, actuals.fy26_target, float(assumptions["fy27_arr_target"])),
-            use_container_width=True,
-        )
-    with right:
-        st.markdown("**Cash against the covenant floor**")
-        st.plotly_chart(
-            charts.cash_and_covenant(por_series, float(assumptions["min_cash_covenant"])),
-            use_container_width=True,
-        )
 
-    st.markdown("**Monthly net burn**")
-    st.plotly_chart(charts.burn_chart(por_series), use_container_width=True)
+    st.divider()
+    st.markdown("### What sales actually produces today")
+    st.caption(
+        "The plan is written in MRR. This is the same thing in customers, which is "
+        "the unit the number has to be argued in."
+    )
+    quota_mrr = float(assumptions["ae_quota_net_new_mrr"])
+    logos_per_ae = quota_mrr / actuals.blended_arpu
+    planned_aes = int(assumptions["new_ae_hires"])
+    s1, s2, s3, s4 = st.columns(4)
+    s1.metric("New logos landed / month", f"{actuals.new_logos_trailing_3mo:.0f}",
+              f"{actuals.new_logos_ytd_mean:.1f} average across 2026", delta_color="off")
+    s2.metric("Customers lost / month", f"{actuals.churned_logos_trailing_3mo:.0f}",
+              f"net +{actuals.new_logos_trailing_3mo - actuals.churned_logos_trailing_3mo:.0f} a month",
+              delta_color="off")
+    s3.metric("Blended price / customer", f"${actuals.blended_arpu:,.0f}",
+              "MRR ÷ customers", delta_color="off")
+    s4.metric("Each new AE is expected to land", f"{logos_per_ae:.0f} logos/mo",
+              f"{money(quota_mrr, 0)} of quota", delta_color="off")
+    st.markdown(esc_md(
+        f"The lever labelled *New logos / month* is bookings. It sits at "
+        f"{actuals.new_logos_ytd_mean:.0f} because that is what Copperline actually landed, "
+        f"on average, every month this year — it is not a target. Each new AE is credited "
+        f"with {logos_per_ae:.0f} more a month on top, so {planned_aes} of them are assumed to "
+        f"bring in about {planned_aes * logos_per_ae:.0f} a month between them, roughly "
+        f"{planned_aes * logos_per_ae / max(actuals.new_logos_trailing_3mo, 1):.1f}× what the "
+        f"whole company lands today. That is the assumption to argue with first."
+    ))
 
     st.divider()
     st.markdown("### What the plan requires from here")
@@ -612,9 +649,55 @@ if screen.startswith("1"):
     ))
 
     st.divider()
-    st.markdown("### Plan integrity")
-    st.caption("Deterministic rules, evaluated on the plan of record. No lever has been touched.")
+    left, right = st.columns([3, 2])
+    with left:
+        st.markdown("**ARR trajectory**")
+        st.plotly_chart(
+            charts.arr_trajectory(
+                por_series, actuals.fy26_target, float(assumptions["fy27_arr_target"])),
+            use_container_width=True,
+        )
+    with right:
+        st.markdown("**Cash against the covenant floor**")
+        st.plotly_chart(
+            charts.cash_and_covenant(por_series, float(assumptions["min_cash_covenant"])),
+            use_container_width=True,
+        )
+
+    st.markdown("**Monthly net burn**")
+    st.plotly_chart(charts.burn_chart(por_series), use_container_width=True)
+    st.divider()
+    st.markdown("### What worries me about this plan")
+    st.caption(
+        "From the CFO, before anyone has changed anything. These are checks that run on "
+        "arithmetic, not opinions — each one is a place where two things the company has "
+        "already committed to cannot both be true."
+    )
+    st.markdown(esc_md(
+        "Read in order. The first is the one that decides the year: **we do not have the "
+        "people to book what Q4 needs, and hiring now cannot fix it in time** — a rep hired "
+        "today is not at full quota until the quarter is over. The second is revenue we are "
+        "already counting that may not arrive; the sidebar has a toggle to take that "
+        "haircut and watch what it does. The last two are about the sales assumption itself, "
+        "and they pull in opposite directions: the quota is too small to rescue Q4 and too "
+        "large to believe for a full year. At most one of those can be right."
+    ))
     render_flags(por_flags, por_verdict)
+
+    st.divider()
+    st.markdown("### What to do with this")
+    st.markdown(esc_md(
+        f"**1 · Present Day** is where we are, and it does not move.\n\n"
+        f"**2 · Decision Studio** is where you change it. Move new logos, churn, retention "
+        f"and price for the trajectory; move AE headcount and start date for capacity; "
+        f"toggle the {target['target_name']} acquisition and how much of it is borrowed. "
+        f"Everything recomputes, and the present day plan stays on every chart as a dotted "
+        f"blue line so you can see what your choice actually bought.\n\n"
+        f"**3 · Final Decision** turns the scenario you settled on into a memo for the board. "
+        f"Generate one per scenario if you want to put options side by side.\n\n"
+        f"The decision has to be made before {str(target['expected_close'])[:10]} — "
+        f"{days_to('2026-11-01')} days — or the acquisition question answers itself."
+    ))
 
     with st.expander("Actuals detail — Jan–Aug 2026"):
         from data_loader import load_actuals
@@ -624,14 +707,15 @@ if screen.startswith("1"):
 # SCREEN 2 — Decision studio
 # ============================================================================
 elif screen.startswith("2"):
-    st.title("Decision studio")
+    st.title("Decision Studio")
     st.caption(
         "Move a lever in the sidebar. Revenue, cash, runway, covenant headroom and the "
-        "integrity check all recompute."
+        "integrity check all recompute, and the present day plan stays on every chart "
+        "so you can see what changed."
     )
     if scenario_changed:
         st.markdown(
-            '<div class="caption-note">Scenario differs from the plan of record.</div>',
+            '<div class="caption-note">Scenario differs from the present day plan.</div>',
             unsafe_allow_html=True,
         )
 
@@ -710,7 +794,7 @@ elif screen.startswith("2"):
     baseline = por_series if scenario_changed else None
     if scenario_changed:
         st.caption(
-            "Blue dotted is the plan of record — where today's plan leads if nobody acts. "
+            "Blue dotted is the present day plan — where today's plan leads if nobody acts. "
             "Orange is this scenario. The gap between them is what your levers bought."
         )
     with left:
@@ -779,7 +863,7 @@ elif screen.startswith("2"):
 # SCREEN 3 — The memo
 # ============================================================================
 else:
-    st.title("The memo")
+    st.title("Final Decision")
     st.caption(
         "Written by Claude from the computed metrics on the left. The model writes; "
         "it does not calculate."
@@ -796,6 +880,51 @@ else:
     )
     m3.metric("Covenant headroom", money(metrics["covenant"]["headroom"]))
     m4.metric("Integrity flags", str(len(flags)), verdict.split(": ")[-1], delta_color="off")
+
+    # Read-only. The levers deliberately are not on this screen: this page is for
+    # publishing a decision, not still making one.
+    st.divider()
+    st.markdown("### The scenario this memo describes")
+    changed = scenario_deltas(scenario, defaults, target)
+    st.caption(
+        "Changed from the present day plan: " + ("; ".join(changed) if changed else
+        "nothing — this is the present day plan as filed.")
+        + ". To change it, go back to the Decision Studio."
+    )
+    r1, r2, r3, r4 = st.columns(4)
+    r1.metric("New logos / month", f"{scenario.new_logos_per_month:.0f}",
+              f"present day plan {defaults.new_logos_per_month:.0f}", delta_color="off")
+    r2.metric("Monthly churn", f"{scenario.monthly_logo_churn_pct:.1f}%",
+              f"NRR {scenario.net_revenue_retention_pct:.0f}%", delta_color="off")
+    r3.metric("AE hires", f"{scenario.new_ae_hires}",
+              f"from {scenario.new_ae_start}", delta_color="off")
+    r4.metric(f"Acquire {target['target_name'].split()[0]}",
+              "Yes" if scenario.acquire_brightpath else "No",
+              money(scenario.acquisition_price) if scenario.acquire_brightpath
+              else "price increase " + f"{scenario.price_increase_pct:.0f}%",
+              delta_color="off")
+
+    st.divider()
+    st.markdown("### The picture behind the memo")
+    st.caption(
+        "The same charts the Decision Studio shows, so the memo can be read against "
+        "them rather than on trust. Dotted blue is the present day plan."
+    )
+    memo_baseline = por_series if scenario_changed else None
+    mc1, mc2 = st.columns(2)
+    with mc1:
+        st.plotly_chart(
+            charts.arr_trajectory(
+                series, actuals.fy26_target, float(assumptions["fy27_arr_target"]),
+                baseline=memo_baseline),
+            use_container_width=True,
+        )
+    with mc2:
+        st.plotly_chart(
+            charts.cash_and_covenant(
+                series, float(assumptions["min_cash_covenant"]), baseline=memo_baseline),
+            use_container_width=True,
+        )
 
     st.divider()
     render_flags(flags, verdict)
@@ -816,7 +945,7 @@ else:
             st.warning("Scenario changed since this memo was written. Regenerate to update it.")
 
     if generate:
-        with st.spinner("Floyd is writing the memo…"):
+        with st.spinner("Writing the memo…"):
             try:
                 st.session_state["memo"] = generate_memo(payload, effective_key or None)
                 st.session_state["memo_fingerprint"] = fingerprint
@@ -838,8 +967,8 @@ else:
         )
     else:
         st.info(
-            "Press **Generate memo**. The memo is written for the scenario currently set in the "
-            "sidebar and regenerates whenever you change it."
+            "Press **Generate memo**. It is written for the scenario shown above; change "
+            "that in the Decision Studio and generate again to compare options."
         )
 
     with st.expander("The structured JSON handed to the model"):

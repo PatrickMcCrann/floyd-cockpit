@@ -166,14 +166,18 @@ def check_plan_integrity(scenario: Scenario, fc: pd.DataFrame, metrics: dict) ->
             Flag(
                 rule="hiring_ahead_of_capacity_evidence",
                 severity="serious",
-                headline="AE plan assumes a bookings step-up the actuals do not support",
+                headline="Every new rep is expected to out-sell the whole company",
                 contradiction=(
-                    f"Trailing three-month actual net-new MRR is {_fmt_money(trailing)} per month "
-                    f"company-wide — below a single AE's {_fmt_money(quota)} quota. The plan adds "
-                    f"{scenario.new_ae_hires} AEs at {_fmt_money(planned_ae_mrr)} per month of assumed "
-                    f"fully-ramped production, a {planned_ae_mrr / trailing:.1f}x step-up on the current "
-                    f"run rate, at {_fmt_money(scenario.new_ae_hires * float(a['loaded_cost_per_ae']))} "
-                    f"per month of loaded cost from {scenario.new_ae_start}."
+                    f"Each new AE is credited with {_fmt_money(quota)} of net-new MRR a month. At the "
+                    f"current blended price of ${s.blended_arpu:,.0f} a customer, that is about "
+                    f"{quota / s.blended_arpu:.0f} new logos every month, from one rep. The whole "
+                    f"company is landing {s.new_logos_trailing_3mo:.0f} a month right now. So the plan "
+                    f"asks {scenario.new_ae_hires} people to bring in about "
+                    f"{scenario.new_ae_hires * quota / s.blended_arpu:.0f} logos a month between them — "
+                    f"{scenario.new_ae_hires * quota / s.blended_arpu / max(s.new_logos_trailing_3mo, 1):.1f} "
+                    f"times what everyone already here manages together. They cost "
+                    f"{_fmt_money(scenario.new_ae_hires * float(a['loaded_cost_per_ae']))} a month from "
+                    f"{scenario.new_ae_start} whether or not that happens."
                 ),
                 moves=[
                     f"Show pipeline coverage for {_fmt_money(planned_ae_mrr * 3)} of Q4 net-new before "
@@ -247,16 +251,17 @@ def check_plan_integrity(scenario: Scenario, fc: pd.DataFrame, metrics: dict) ->
             Flag(
                 rule="quota_assumption_unvalidated_over_fy27",
                 severity="warning",
-                headline="The AE quota assumption produces an FY27 result the board plan does not claim",
+                headline="The forecast assumes the new reps keep growing at full speed forever",
                 contradiction=(
-                    f"Held as a run rate, {scenario.new_ae_hires} AEs at "
-                    f"{_fmt_money(quota)} of net-new MRR each per month add roughly "
-                    f"{_fmt_money(annual_ae_arr)} of ARR over a full year. That carries modeled FY27 "
-                    f"exit ARR to {_fmt_money(fy27_modeled)} against an {_fmt_money(fy27_target)} "
-                    f"target — {_fmt_money(fy27_modeled - fy27_target)} above plan. The same quota is "
-                    f"only just sufficient for the Q4 requirement, so it cannot be right in both "
-                    f"places: either the quota is overstated as a sustained rate, or the FY27 target "
-                    f"is set well below what the sales plan implies."
+                    f"The model keeps every AE producing {_fmt_money(quota)} of new MRR every month, "
+                    f"for as long as the forecast runs. Nothing ever slows down. Compounded, that "
+                    f"carries FY27 to {_fmt_money(fy27_modeled)} against a target of "
+                    f"{_fmt_money(fy27_target)} — {_fmt_money(fy27_modeled - fy27_target)} above what "
+                    f"the board is actually asking for. Real sales teams do not work that way: reps "
+                    f"ramp, plateau, and some leave. Treat the back half of the FY27 line as an "
+                    f"artefact of the assumption, not as money you have. The same quota is only just "
+                    f"enough for the Q4 number, so it cannot be simultaneously too low for this year "
+                    f"and far too high for next."
                 ),
                 moves=[
                     "Re-derive the quota from what the existing team actually produced in 2026 rather "
