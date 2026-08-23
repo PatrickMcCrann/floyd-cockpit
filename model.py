@@ -45,6 +45,18 @@ FY26_FORECAST_MONTHS = month_range(FORECAST_START, FY26_END)
 Q4_2026 = ["2026-10", "2026-11", "2026-12"]
 
 PRICE_EFFECTIVE = "2026-10"   # price increase hits at renewal from Oct 1
+
+# Share of a renewing cohort that walks rather than accept the increase, per one
+# percentage point of increase. At 0.5, a 10% rise loses 5% of each cohort as it
+# comes up for renewal.
+#
+# This is an ASSUMPTION, not a measurement. Nothing in the supplied data records
+# a past price change, so there is no elasticity to fit. It defaults non-zero
+# because the alternative -- revenue that rises with nobody objecting -- is the
+# one thing we know to be false. It does not touch the plan of record, which
+# carries no increase. Argue with the number; do not leave it at zero by
+# accident.
+DEFAULT_PRICE_CHURN_SENSITIVITY = 0.5
 MERIT_EFFECTIVE = "2027-01"   # company-wide +4% merit
 
 
@@ -66,6 +78,7 @@ class Scenario:
     acquisition_debt_draw: float         # drawn from the undrawn line, rest is cash
     debt_facility: float                 # undrawn capacity available to draw against
     ae_quota_net_new_mrr: float          # net-new MRR a fully ramped AE is assumed to add
+    price_churn_sensitivity: float       # % of a renewing cohort lost per 1pt of increase
 
     @classmethod
     def from_defaults(cls) -> "Scenario":
@@ -84,6 +97,7 @@ class Scenario:
             acquisition_debt_draw=0.0,
             debt_facility=float(a["debt_available"]),
             ae_quota_net_new_mrr=float(a["ae_quota_net_new_mrr"]),
+            price_churn_sensitivity=DEFAULT_PRICE_CHURN_SENSITIVITY,
         )
 
     def as_dict(self) -> dict:
@@ -246,6 +260,20 @@ def run_forecast(scenario: Scenario) -> pd.DataFrame:
     bp_headcount = float(t["headcount"])
     bp_integration_total = float(t["integration_cost_usd"])
 
+    def renewal_share(month_i: int) -> float:
+        """Fraction of the base coming up for renewal in this month.
+
+        Mirrors price_factor exactly: annual contracts, an even twelfth of the
+        base repricing each month from the effective date. After twelve months
+        the whole base has cycled through and there is nobody left to lose to
+        this particular increase.
+        """
+        if scenario.price_increase_pct <= 0 or month_i < price_i:
+            return 0.0
+        if month_i - price_i >= 12:
+            return 0.0
+        return 1.0 / 12.0
+
     def price_factor(month_i: int) -> float:
         """1/12 of the base reprices each month from Oct 1 — renewal-only phase-in."""
         if scenario.price_increase_pct <= 0 or month_i < price_i:
@@ -263,11 +291,18 @@ def run_forecast(scenario: Scenario) -> pd.DataFrame:
         ent_arpu_prev_eff = ent_base_arpu * pf_prev
 
         # --- customers ---
+        # Customers repricing this month who leave rather than pay. Applied to
+        # the tier counts only: AE-sourced and acquired MRR are not facing this
+        # renewal, so they are not exposed to it.
+        refusal = (scenario.price_churn_sensitivity / 100.0) * scenario.price_increase_pct
+        price_churn_rate = renewal_share(i) * refusal
+        pchurn_core, pchurn_ent = core_c * price_churn_rate, ent_c * price_churn_rate
+
         churn_core, churn_ent = core_c * churn, ent_c * churn
         new_core = scenario.new_logos_per_month * core_share
         new_ent = scenario.new_logos_per_month * (1.0 - core_share)
-        core_c_new = core_c - churn_core + new_core
-        ent_c_new = ent_c - churn_ent + new_ent
+        core_c_new = core_c - churn_core - pchurn_core + new_core
+        ent_c_new = ent_c - churn_ent - pchurn_ent + new_ent
 
         # --- ARPU: NRR expansion on the base, then the renewal price factor ---
         core_base_new = core_base_arpu * (1.0 + expansion)
@@ -275,6 +310,7 @@ def run_forecast(scenario: Scenario) -> pd.DataFrame:
 
         # --- exact decomposition of the base-MRR change ---
         d_churn = -(churn_core * core_arpu_prev_eff + churn_ent * ent_arpu_prev_eff)
+        d_price_churn = -(pchurn_core * core_arpu_prev_eff + pchurn_ent * ent_arpu_prev_eff)
         d_new = new_core * core_arpu_prev_eff + new_ent * ent_arpu_prev_eff
         d_expansion = (
             core_c_new * (core_base_new - core_base_arpu) * pf_prev
@@ -374,6 +410,7 @@ def run_forecast(scenario: Scenario) -> pd.DataFrame:
                 "d_churn": d_churn,
                 "d_expansion": d_expansion,
                 "d_price": d_price,
+                "d_price_churn": d_price_churn,
                 "d_ae": d_ae,
                 "d_at_risk": d_at_risk,
                 "d_acquisition": d_acq,
@@ -452,6 +489,7 @@ def revenue_bridge(fc: pd.DataFrame, through: str = FY26_END) -> list[dict]:
         ("Churn", "d_churn"),
         ("Expansion (NRR)", "d_expansion"),
         ("Price increase", "d_price"),
+        ("Lost to the increase", "d_price_churn"),
         ("New AE capacity", "d_ae"),
         ("At-risk renewals", "d_at_risk"),
         ("Brightpath", "d_acquisition"),
@@ -480,6 +518,7 @@ def scenario_metrics(scenario: Scenario, fc: pd.DataFrame) -> dict:
         + q4["d_churn"].sum()
         + q4["d_expansion"].sum()
         + q4["d_price"].sum()
+        + q4["d_price_churn"].sum()
         + q4["d_ae"].sum()
         + q4["d_at_risk"].sum()
     )

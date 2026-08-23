@@ -15,6 +15,7 @@ import charts
 from data_loader import load_assumption_notes, load_assumptions, load_target
 from integrity import check_plan_integrity, integrity_verdict
 from model import (
+    DEFAULT_PRICE_CHURN_SENSITIVITY,
     FY26_END,
     Scenario,
     actuals_plus_forecast,
@@ -149,6 +150,10 @@ def scenario_deltas(sc, base, tgt) -> list[str]:
         out.append(f"acquiring {tgt['target_name']} at {money(sc.acquisition_price)}")
     elif sc.acquire_brightpath and sc.acquisition_price != base.acquisition_price:
         out.append(f"a {money(sc.acquisition_price)} purchase price")
+    if sc.price_churn_sensitivity != base.price_churn_sensitivity and sc.price_increase_pct > 0:
+        out.append(
+            f"price sensitivity {base.price_churn_sensitivity:.1f} → "
+            f"{sc.price_churn_sensitivity:.1f}% lost per point")
     if abs(sc.ae_quota_net_new_mrr - base.ae_quota_net_new_mrr) > 1:
         out.append(
             f"AE productivity {base.ae_quota_net_new_mrr / _ARPU:.1f} → "
@@ -301,6 +306,7 @@ LEVER_DEFAULTS = {
     # entire company -- an absurdity that is invisible while it stays in MRR.
     "ae_logos": round(float(assumptions["ae_quota_net_new_mrr"])
                       / summarize_actuals().blended_arpu, 1),
+    "price_sens": DEFAULT_PRICE_CHURN_SENSITIVITY,
 }
 
 
@@ -348,6 +354,22 @@ if show_levers:
         "Net revenue retention (%)", 90, 140, lv("nrr"), key=wkey("nrr")))
     keep("price", st.sidebar.slider(
         "Price increase at renewal, from Oct 1 (%)", 0, 25, lv("price"), key=wkey("price")))
+
+    keep("price_sens", st.sidebar.slider(
+        "Customers lost per 1% of increase (%)", 0.0, 2.0, float(lv("price_sens")), 0.1,
+        key=wkey("price_sens"), disabled=lv("price") == 0,
+        help="Of the customers repricing in a given month, the share that leaves rather "
+             "than pay, for each point of increase. An assumption — nothing in our data "
+             "records a past price change — but zero is the one value we know is wrong.",
+    ))
+    if lv("price") > 0:
+        _ref = lv("price_sens") / 100.0 * lv("price")
+        st.sidebar.caption(esc_md(
+            f"A {lv('price'):.0f}% rise loses {_ref:.1%} of each renewing cohort — about "
+            f"{_ref * summarize_actuals().customers:.0f} customers over the twelve months "
+            f"it takes the base to cycle through."
+            + ("  \n**At zero, revenue rises and nobody objects.**" if lv("price_sens") == 0 else "")
+        ))
 
     st.sidebar.markdown("_Sales capacity_")
     keep("aes", st.sidebar.slider("New AE hires", 0, 12, lv("aes"), key=wkey("aes")))
@@ -494,6 +516,7 @@ scenario = Scenario(
     acquisition_debt_draw=float(acq_draw),
     debt_facility=float(facility),
     ae_quota_net_new_mrr=float(ae_quota),
+    price_churn_sensitivity=float(lv("price_sens")),
 )
 
 actuals = summarize_actuals()

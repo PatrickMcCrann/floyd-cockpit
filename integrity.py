@@ -39,16 +39,16 @@ def _fmt_money(x: float) -> str:
     return f"${x / 1_000:,.0f}K"
 
 
-def _fy26_at_list_price(scenario, metrics) -> float:
-    """FY26 exit ARR for the same scenario with the price increase removed.
+def _fy26_variant(scenario, **overrides) -> float:
+    """FY26 exit ARR for the same scenario with fields overridden.
 
     Imported lazily to avoid a circular import: integrity is called from the
     forecast layer, not the other way round.
     """
     import dataclasses
     from model import run_forecast, scenario_metrics
-    flat = dataclasses.replace(scenario, price_increase_pct=0.0)
-    return scenario_metrics(flat, run_forecast(flat))["fy26_exit_arr"]
+    variant = dataclasses.replace(scenario, **overrides)
+    return scenario_metrics(variant, run_forecast(variant))["fy26_exit_arr"]
 
 
 def _months_between(a: str, b: str) -> int:
@@ -286,35 +286,81 @@ def check_plan_integrity(scenario: Scenario, fc: pd.DataFrame, metrics: dict) ->
             )
         )
 
-    # --- Rule 8: a price increase with no churn response ---------------------
+    # --- Rule 8: what the price increase actually nets -----------------------
     if scenario.price_increase_pct > 0:
-        uplift = metrics["fy26_exit_arr"] - _fy26_at_list_price(scenario, metrics)
-        flags.append(
-            Flag(
-                rule="price_increase_no_churn_response",
-                severity="serious" if scenario.price_increase_pct > 5 else "warning",
-                headline="The price increase is modelled with nobody leaving over it",
-                contradiction=(
-                    f"A {scenario.price_increase_pct:.0f}% increase at renewal is carried straight "
-                    f"to revenue: every customer renews, none negotiates, none leaves. Churn stays "
-                    f"at {scenario.monthly_logo_churn_pct:.1f}% a month whatever the price does. "
-                    f"That is the cheapest {_fmt_money(abs(uplift))} of ARR on this page, and the "
-                    f"only lever here with no cost attached — which is the tell that a cost is "
-                    f"missing rather than absent. Raising price on a base already losing "
-                    f"{_fmt_money(float(a['enterprise_renewals_at_risk_mrr']))} of enterprise MRR at "
-                    f"the November renewal is the part the model cannot see."
-                ),
-                moves=[
-                    "Re-run with churn raised to whatever the CRO thinks a "
-                    f"{scenario.price_increase_pct:.0f}% rise actually costs, and read the FY26 "
-                    "number off that instead.",
-                    "Segment it: hold price on the two at-risk enterprise logos and take the "
-                    "increase only where retention is not already in question.",
-                    "Do not present a price-led plan as equivalent to a capacity-led one — this "
-                    "one carries a retention risk the model is not pricing.",
-                ],
+        no_increase = _fy26_variant(scenario, price_increase_pct=0.0)
+        net_gain = metrics["fy26_exit_arr"] - no_increase
+        sens = scenario.price_churn_sensitivity
+        refusal = sens / 100.0 * scenario.price_increase_pct
+
+        if sens <= 0:
+            flags.append(
+                Flag(
+                    rule="price_increase_no_churn_response",
+                    severity="serious",
+                    headline="The price increase is modelled with nobody leaving over it",
+                    contradiction=(
+                        f"Customer loss from repricing is set to zero, so a "
+                        f"{scenario.price_increase_pct:.0f}% increase carries straight to revenue: "
+                        f"everyone renews, nobody negotiates. That makes it the only lever here "
+                        f"with no cost attached, which is the tell that a cost is missing rather "
+                        f"than absent — particularly on a base already losing "
+                        f"{_fmt_money(float(a['enterprise_renewals_at_risk_mrr']))} of enterprise "
+                        f"MRR at the November renewal."
+                    ),
+                    moves=[
+                        "Put the sensitivity back to something you would defend out loud and "
+                        "read the FY26 number off that instead.",
+                        "Ask the CRO what a rise of this size costs in logos before it is "
+                        "presented as free revenue.",
+                    ],
+                )
             )
-        )
+        elif net_gain <= no_increase * 0.004:
+            flags.append(
+                Flag(
+                    rule="price_increase_self_cancelling",
+                    severity="serious",
+                    headline="The price increase pays for itself and nothing more",
+                    contradiction=(
+                        f"A {scenario.price_increase_pct:.0f}% rise adds revenue on the customers "
+                        f"who stay and loses {refusal:.1%} of every cohort that reprices. Netted "
+                        f"off, FY26 exit ARR moves by {_fmt_money(net_gain)} — effectively nothing. "
+                        f"The company would carry the churn, the renegotiations and the goodwill "
+                        f"cost of a price rise and end the year where it started."
+                    ),
+                    moves=[
+                        "Drop the increase, or take it only where switching costs are high "
+                        "enough that the loss rate is genuinely lower.",
+                        "If the increase is strategic rather than financial, say so — do not "
+                        "carry it in the plan as revenue.",
+                        "Find the size where the trade actually pays: smaller rises lose "
+                        "proportionally fewer customers.",
+                    ],
+                )
+            )
+        else:
+            flags.append(
+                Flag(
+                    rule="price_increase_churn_is_assumed",
+                    severity="warning",
+                    headline="What the price increase costs in customers is an assumption",
+                    contradiction=(
+                        f"The plan takes {_fmt_money(net_gain)} of FY26 ARR net from a "
+                        f"{scenario.price_increase_pct:.0f}% rise, after losing {refusal:.1%} of "
+                        f"each repricing cohort at {sens:.1f}% per point. Nothing in our history "
+                        f"records a price change, so that loss rate is judgement, not evidence. "
+                        f"If nobody left over it, the same rise would add "
+                        f"{_fmt_money(_fy26_variant(scenario, price_churn_sensitivity=0.0) - no_increase)}. "
+                        f"The gap between those two figures is the size of the bet."
+                    ),
+                    moves=[
+                        "Get the CRO on record with a loss rate before the number goes to the board.",
+                        "Segment the increase: hold price on the at-risk enterprise logos.",
+                        "Run the plan at double the assumed sensitivity and check it still works.",
+                    ],
+                )
+            )
 
     flags.sort(key=lambda f: SEVERITY_ORDER.get(f.severity, 9))
     return flags
