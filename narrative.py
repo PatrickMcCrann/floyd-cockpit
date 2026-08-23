@@ -230,7 +230,12 @@ def generate_memo(payload: dict, api_key: str | None = None) -> str:
 
     request = dict(
         model=MODEL,
-        max_tokens=4000,
+        # 4000 truncated a real memo mid-sentence in the final triggers table.
+        # Thinking tokens count against this ceiling, and at effort "high" they
+        # take most of a small budget before a word of the memo is written.
+        # 16000 leaves room for both and stays inside the SDK's non-streaming
+        # HTTP timeout.
+        max_tokens=16000,
         system=SYSTEM_PROMPT,
         messages=[{"role": "user", "content": message}],
         output_config={"effort": "high"},
@@ -297,4 +302,15 @@ def generate_memo(payload: dict, api_key: str | None = None) -> str:
     text = "".join(block.text for block in response.content if block.type == "text")
     if not text.strip():
         raise NarrativeError("The model returned an empty memo. Try regenerating.")
+
+    # A memo that stops mid-sentence still looks like a memo. Say so rather than
+    # letting a half-finished recommendation go in front of a board.
+    if response.stop_reason == "max_tokens":
+        text += (
+            "\n\n---\n\n> **This memo was cut off before it finished.** The model hit its "
+            "output limit, so anything below the last complete section is missing — most "
+            "likely the triggers. Regenerate, and if it recurs raise `max_tokens` in "
+            "`narrative.py`. Everything above this line is complete and the figures in it "
+            "are unaffected."
+        )
     return text
