@@ -51,6 +51,53 @@ class NarrativeError(RuntimeError):
     pass
 
 
+def assumptions_in_force(scenario, defaults, actuals) -> list[dict]:
+    """Every assumption this scenario carries that is not evidence from the books.
+
+    Three levers on this tool are judgement rather than measurement, and a
+    scenario that moves them can reach almost any answer. Listing them beside
+    the result is what stops a set of choices being laundered into a
+    recommendation: the memo has to say what it assumed to get there.
+    """
+    out = []
+    arpu = actuals.blended_arpu
+
+    logos = scenario.ae_quota_net_new_mrr / arpu
+    plan_logos = defaults.ae_quota_net_new_mrr / arpu
+    out.append({
+        "assumption": "AE productivity once ramped",
+        "value": f"{logos:.1f} new logos per rep per month (${scenario.ae_quota_net_new_mrr:,.0f} MRR)",
+        "board_plan": f"{plan_logos:.1f} logos per rep per month",
+        "at_board_plan": abs(logos - plan_logos) < 0.05,
+        "basis": (
+            "Judgement. Copperline has never recorded production per rep — there is no AE "
+            f"headcount in the books — so no per-rep rate can be derived. For scale, the "
+            f"whole company lands {actuals.new_logos_trailing_3mo:.0f} logos a month."
+        ),
+    })
+
+    out.append({
+        "assumption": "Customers lost to a price increase",
+        "value": (f"{scenario.price_churn_sensitivity:.1f}% of each repricing cohort per point "
+                  f"of increase" if scenario.price_increase_pct > 0 else "not engaged (no increase)"),
+        "board_plan": "no increase is planned, so the question does not arise",
+        "at_board_plan": scenario.price_increase_pct == 0,
+        "basis": (
+            "Judgement. No past price change appears in the data, so there is no elasticity "
+            "to fit. Zero would mean revenue rising with nobody objecting."
+        ),
+    })
+
+    out.append({
+        "assumption": "Undrawn debt facility",
+        "value": f"${scenario.debt_facility:,.0f} available to draw",
+        "board_plan": f"${defaults.debt_facility:,.0f} (the figure in the supplied data)",
+        "at_board_plan": scenario.debt_facility == defaults.debt_facility,
+        "basis": "Supplied data at the default. Anything above it is a facility not yet negotiated.",
+    })
+    return out
+
+
 def build_payload(
     actuals,
     scenario,
@@ -58,9 +105,22 @@ def build_payload(
     flags: list,
     fy27_quarters: list[dict],
     bridge: list[dict],
+    defaults=None,
 ) -> dict:
     """Assemble the structured JSON the model writes from. Numbers only, no prose math."""
+    disclosure = (
+        assumptions_in_force(scenario, defaults, actuals) if defaults is not None else []
+    )
     return {
+        "assumptions_in_force": {
+            "note": (
+                "Judgement calls this scenario rests on, not measurements. State any that "
+                "differ from the board plan in the memo; a recommendation that depends on "
+                "one of these has to say so."
+            ),
+            "any_departures_from_board_plan": any(not d["at_board_plan"] for d in disclosure),
+            "items": disclosure,
+        },
         "company": {
             "name": "Copperline",
             "profile": "Series B B2B SaaS, workflow software",

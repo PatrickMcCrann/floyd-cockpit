@@ -26,7 +26,12 @@ from model import (
     scenario_metrics,
     summarize_actuals,
 )
-from narrative import NarrativeError, build_payload, generate_memo
+from narrative import (
+    NarrativeError,
+    assumptions_in_force,
+    build_payload,
+    generate_memo,
+)
 
 st.set_page_config(page_title="Copperline — Growth Decision Cockpit", page_icon="◆", layout="wide")
 
@@ -307,6 +312,7 @@ LEVER_DEFAULTS = {
     "ae_logos": round(float(assumptions["ae_quota_net_new_mrr"])
                       / summarize_actuals().blended_arpu, 1),
     "price_sens": DEFAULT_PRICE_CHURN_SENSITIVITY,
+    "ae_evidenced": False,
 }
 
 
@@ -385,23 +391,40 @@ if show_levers:
 
     _arpu = summarize_actuals().blended_arpu
     _company_logos = summarize_actuals().new_logos_trailing_3mo
+    _plan_logos = LEVER_DEFAULTS["ae_logos"]
+    keep("ae_evidenced", st.sidebar.checkbox(
+        "Hold new AEs to a pace this company has demonstrated",
+        value=lv("ae_evidenced"), key=wkey("ae_evidenced"),
+        help="Sets the cohort to land, between them, what the whole company lands today. "
+             "Copperline has never tracked production per rep, so this is anchored to "
+             "company output — not to rep history, which does not exist.",
+    ))
     keep("ae_logos", st.sidebar.slider(
         "New logos each AE lands / month", 0.0, 12.0, float(lv("ae_logos")), 0.5,
-        key=wkey("ae_logos"),
-        help="The board plan credits each rep with about 10.5 logos a month. The whole "
-             "company lands 11. Drag this down to whatever you actually believe a new "
-             "rep will close, and watch the plan change shape.",
+        key=wkey("ae_logos"), disabled=lv("ae_evidenced"),
+        help="The board plan credits each rep with about 10.5 a month. The whole company "
+             "lands 11. Drag this to whatever you believe a new rep will actually close.",
     ))
-    _q = lv("ae_logos") * _arpu
-    _plan_logos = LEVER_DEFAULTS["ae_logos"]
-    st.sidebar.caption(esc_md(
-        f"= {money(_q, 0)}/mo of quota per rep. "
-        + (f"Board plan is {_plan_logos:.1f}. "
-           if abs(lv("ae_logos") - _plan_logos) > 0.05 else "This is the board plan. ")
-        + f"{lv('aes')} reps at this rate add "
-        f"{lv('aes') * lv('ae_logos'):.0f} logos/mo against "
-        f"{_company_logos:.0f} company-wide today."
-    ))
+    ae_logos_effective = (
+        _company_logos / max(lv("aes"), 1) if lv("ae_evidenced") else lv("ae_logos")
+    )
+    if lv("ae_evidenced"):
+        st.sidebar.caption(esc_md(
+            f"**{ae_logos_effective:.1f} logos per rep** — {lv('aes')} reps landing "
+            f"{_company_logos:.0f} a month between them, which doubles what Copperline "
+            f"does today. That is {money(ae_logos_effective * _arpu, 0)}/mo of quota each, "
+            f"against the board plan's {money(_plan_logos * _arpu, 0)}. Anchored to company "
+            f"output; we have no per-rep history."
+        ))
+    else:
+        st.sidebar.caption(esc_md(
+            f"= {money(ae_logos_effective * _arpu, 0)}/mo of quota per rep. "
+            + (f"Board plan is {_plan_logos:.1f}. "
+               if abs(ae_logos_effective - _plan_logos) > 0.05 else "This is the board plan. ")
+            + f"{lv('aes')} reps at this rate add "
+            f"{lv('aes') * ae_logos_effective:.0f} logos/mo against "
+            f"{_company_logos:.0f} company-wide today."
+        ))
 
     st.sidebar.markdown("_Retention_")
     keep("haircut", st.sidebar.checkbox(
@@ -464,7 +487,11 @@ facility = lv("facility_k") * 1e3
 # one decimal, so converting back through ARPU lands ~$22 off the CSV quota —
 # enough to make scenario != defaults forever and leave the "changed" overlay
 # permanently on, which is worse than the rounding it came from.
-if abs(lv("ae_logos") - LEVER_DEFAULTS["ae_logos"]) < 1e-9:
+if lv("ae_evidenced"):
+    # The cohort collectively matches the company's current gross new-logo pace.
+    ae_quota = (summarize_actuals().new_logos_trailing_3mo / max(lv("aes"), 1)
+                * summarize_actuals().blended_arpu)
+elif abs(lv("ae_logos") - LEVER_DEFAULTS["ae_logos"]) < 1e-9:
     ae_quota = float(assumptions["ae_quota_net_new_mrr"])
 else:
     ae_quota = lv("ae_logos") * summarize_actuals().blended_arpu
@@ -986,6 +1013,25 @@ else:
               else "price increase " + f"{scenario.price_increase_pct:.0f}%",
               delta_color="off")
 
+    _disc = assumptions_in_force(scenario, defaults, actuals)
+    _moved = [d for d in _disc if not d["at_board_plan"]]
+    if _moved:
+        rows = "".join(
+            f'<li><b>{esc_html(d["assumption"])}:</b> {esc_html(d["value"])} '
+            f'<span style="color:{charts.MUTED};">(board plan: {esc_html(d["board_plan"])})</span>'
+            f'<br><span style="color:{charts.INK_2};font-size:.85rem;">{esc_html(d["basis"])}</span></li>'
+            for d in _moved
+        )
+        st.markdown(
+            f'<div class="flag-card" style="border-left-color:{charts.WARNING};">'
+            f'<div class="flag-sev" style="color:{charts.WARNING};">● Assumptions this rests on</div>'
+            f'<div class="flag-body">This recommendation depends on '
+            f'{len(_moved)} judgement call{"s" if len(_moved) > 1 else ""} that differ from the '
+            f'board plan. They are not measurements, and the memo is required to say so.</div>'
+            f'<ul class="flag-moves">{rows}</ul></div>',
+            unsafe_allow_html=True,
+        )
+
     st.divider()
     st.markdown("### The picture behind the memo")
     st.caption(
@@ -1016,6 +1062,7 @@ else:
         actuals, scenario, metrics, flags,
         quarterly_fy27(fc).to_dict(orient="records"),
         revenue_bridge(fc, FY26_END),
+        defaults=defaults,
     )
     fingerprint = str(scenario.as_dict())
 
