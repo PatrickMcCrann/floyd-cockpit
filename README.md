@@ -189,6 +189,25 @@ and holding it as a run rate for a year produces roughly twice the plan. Both ca
 true. The tool names the contradiction instead of picking whichever answer is more
 comfortable.
 
+## How this was built
+
+The full record is in [`docs/07-chat-history.md`](docs/07-chat-history.md) —
+thirty-nine exchanges across two sessions and three days. Part 1 is the research
+and problem definition that chose this build over nine alternatives and vetted
+each against shipping products; Part 2 is the Claude Code session that built,
+reviewed and hardened it.
+
+Supporting documents:
+
+| | |
+|---|---|
+| [`docs/01-process-timeline.md`](docs/01-process-timeline.md) | How the project ran, start to submission |
+| [`docs/02-problem-statement.md`](docs/02-problem-statement.md) | The problem, why it persists, who has it |
+| [`docs/03-idea-funnel.md`](docs/03-idea-funnel.md) | Ten ideas in, one out, with the vendor that killed each |
+| [`docs/05-build-decisions.md`](docs/05-build-decisions.md) | Judgement calls made during the build, and why |
+| [`docs/06-work-list.md`](docs/06-work-list.md) | The usability pass, verified against the model |
+| [`docs/research/`](docs/research/) | ICP report, vendor vetting, idea ledger |
+
 ## Chart design notes
 
 Colors are assigned by the job they do, not cycled: blue is always actuals, orange
