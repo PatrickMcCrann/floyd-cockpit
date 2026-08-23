@@ -39,6 +39,18 @@ def _fmt_money(x: float) -> str:
     return f"${x / 1_000:,.0f}K"
 
 
+def _fy26_at_list_price(scenario, metrics) -> float:
+    """FY26 exit ARR for the same scenario with the price increase removed.
+
+    Imported lazily to avoid a circular import: integrity is called from the
+    forecast layer, not the other way round.
+    """
+    import dataclasses
+    from model import run_forecast, scenario_metrics
+    flat = dataclasses.replace(scenario, price_increase_pct=0.0)
+    return scenario_metrics(flat, run_forecast(flat))["fy26_exit_arr"]
+
+
 def _months_between(a: str, b: str) -> int:
     return midx(b) - midx(a)
 
@@ -50,7 +62,7 @@ def check_plan_integrity(scenario: Scenario, fc: pd.DataFrame, metrics: dict) ->
     flags: list[Flag] = []
 
     ramp = int(a["ae_ramp_months"])
-    quota = float(a["ae_quota_net_new_mrr"])
+    quota = float(scenario.ae_quota_net_new_mrr)
     required = float(a["q4_net_new_mrr_required"])
 
     # --- Rule 1: bookings capacity vs the Q4 target -------------------------
@@ -270,6 +282,36 @@ def check_plan_integrity(scenario: Scenario, fc: pd.DataFrame, metrics: dict) ->
                     "perpetual rate, and re-read FY27.",
                     "Treat FY27 exit ARR above the target as a modelling artefact, not headroom — do "
                     "not spend against it.",
+                ],
+            )
+        )
+
+    # --- Rule 8: a price increase with no churn response ---------------------
+    if scenario.price_increase_pct > 0:
+        uplift = metrics["fy26_exit_arr"] - _fy26_at_list_price(scenario, metrics)
+        flags.append(
+            Flag(
+                rule="price_increase_no_churn_response",
+                severity="serious" if scenario.price_increase_pct > 5 else "warning",
+                headline="The price increase is modelled with nobody leaving over it",
+                contradiction=(
+                    f"A {scenario.price_increase_pct:.0f}% increase at renewal is carried straight "
+                    f"to revenue: every customer renews, none negotiates, none leaves. Churn stays "
+                    f"at {scenario.monthly_logo_churn_pct:.1f}% a month whatever the price does. "
+                    f"That is the cheapest {_fmt_money(abs(uplift))} of ARR on this page, and the "
+                    f"only lever here with no cost attached — which is the tell that a cost is "
+                    f"missing rather than absent. Raising price on a base already losing "
+                    f"{_fmt_money(float(a['enterprise_renewals_at_risk_mrr']))} of enterprise MRR at "
+                    f"the November renewal is the part the model cannot see."
+                ),
+                moves=[
+                    "Re-run with churn raised to whatever the CRO thinks a "
+                    f"{scenario.price_increase_pct:.0f}% rise actually costs, and read the FY26 "
+                    "number off that instead.",
+                    "Segment it: hold price on the two at-risk enterprise logos and take the "
+                    "increase only where retention is not already in question.",
+                    "Do not present a price-led plan as equivalent to a capacity-led one — this "
+                    "one carries a retention risk the model is not pricing.",
                 ],
             )
         )

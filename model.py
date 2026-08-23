@@ -65,6 +65,7 @@ class Scenario:
     acquisition_price: float
     acquisition_debt_draw: float         # drawn from the undrawn line, rest is cash
     debt_facility: float                 # undrawn capacity available to draw against
+    ae_quota_net_new_mrr: float          # net-new MRR a fully ramped AE is assumed to add
 
     @classmethod
     def from_defaults(cls) -> "Scenario":
@@ -82,6 +83,7 @@ class Scenario:
             acquisition_price=float(t["asking_price_usd"]),
             acquisition_debt_draw=0.0,
             debt_facility=float(a["debt_available"]),
+            ae_quota_net_new_mrr=float(a["ae_quota_net_new_mrr"]),
         )
 
     def as_dict(self) -> dict:
@@ -205,7 +207,7 @@ def run_forecast(scenario: Scenario) -> pd.DataFrame:
     churn = scenario.monthly_logo_churn_pct / 100.0
     expansion = (scenario.net_revenue_retention_pct / 100.0) ** (1.0 / 12.0) - 1.0
     ramp_months = int(a["ae_ramp_months"])
-    quota = float(a["ae_quota_net_new_mrr"])
+    quota = float(scenario.ae_quota_net_new_mrr)
     ae_cost = float(a["loaded_cost_per_ae"])
     merit = 1.0 + float(a["merit_increase_jan27_pct"]) / 100.0
     at_risk_mrr = float(a["enterprise_renewals_at_risk_mrr"])

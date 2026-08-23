@@ -125,6 +125,9 @@ def months_label(m: float) -> str:
     return f"{m:.0f} months"
 
 
+_ARPU = summarize_actuals().blended_arpu
+
+
 def scenario_deltas(sc, base, tgt) -> list[str]:
     """Plain-language list of what this scenario changed, in the user's terms."""
     out = []
@@ -146,6 +149,10 @@ def scenario_deltas(sc, base, tgt) -> list[str]:
         out.append(f"acquiring {tgt['target_name']} at {money(sc.acquisition_price)}")
     elif sc.acquire_brightpath and sc.acquisition_price != base.acquisition_price:
         out.append(f"a {money(sc.acquisition_price)} purchase price")
+    if abs(sc.ae_quota_net_new_mrr - base.ae_quota_net_new_mrr) > 1:
+        out.append(
+            f"AE productivity {base.ae_quota_net_new_mrr / _ARPU:.1f} → "
+            f"{sc.ae_quota_net_new_mrr / _ARPU:.1f} logos per rep a month")
     if sc.debt_facility != base.debt_facility:
         out.append(f"the facility raised to {money(sc.debt_facility, 0)}")
     if sc.acquisition_debt_draw != base.acquisition_debt_draw:
@@ -289,12 +296,30 @@ LEVER_DEFAULTS = {
     "acq_price_m": float(defaults.acquisition_price) / 1e6,
     "acq_draw_k": 0,
     "facility_k": int(float(assumptions["debt_available"]) / 1e3),
+    # Quota is stored in logos/rep/month because that is the unit anyone can
+    # argue with. The plan's $22K converts to about 10.5, against 11 for the
+    # entire company -- an absurdity that is invisible while it stays in MRR.
+    "ae_logos": round(float(assumptions["ae_quota_net_new_mrr"])
+                      / summarize_actuals().blended_arpu, 1),
 }
 
 
 def lv(name):
     """Current value of a lever, whether or not its widget is on screen."""
     return st.session_state.get(f"val_{name}", LEVER_DEFAULTS[name])
+
+
+def wkey(name: str) -> str:
+    """Widget key, namespaced by a reset counter.
+
+    Reset works by bumping the counter, which gives every widget a key it has
+    never seen and therefore its default value. Deleting session_state alone
+    does not do it: Streamlit restores a widget from its own internal store when
+    the key is unchanged, so the toggles kept their old positions while the
+    numbers underneath them reset -- the worst possible failure, because the
+    screen then disagrees with itself.
+    """
+    return f"lever_{name}_{st.session_state.get('reset_nonce', 0)}"
 
 
 def keep(name, value):
@@ -307,32 +332,53 @@ if show_levers:
     st.sidebar.markdown("**Levers**")
 
     if st.sidebar.button("Reset to the present day plan", width="stretch"):
-        for k in list(st.session_state.keys()):
-            if k.startswith(("lever_", "val_")):
-                del st.session_state[k]
+        for k in [k for k in st.session_state if k.startswith(("lever_", "val_"))]:
+            del st.session_state[k]
+        st.session_state["reset_nonce"] = st.session_state.get("reset_nonce", 0) + 1
         st.session_state.pop("memo", None)
+        st.session_state.pop("memo_fingerprint", None)
         st.rerun()
 
     st.sidebar.markdown("_Current trajectory_")
     keep("logos", st.sidebar.slider(
-        "New logos / month", 0, 40, lv("logos"), key="lever_logos"))
+        "New logos / month", 0, 40, lv("logos"), key=wkey("logos")))
     keep("churn", st.sidebar.slider(
-        "Monthly logo churn (%)", 0.0, 6.0, lv("churn"), 0.1, key="lever_churn"))
+        "Monthly logo churn (%)", 0.0, 6.0, lv("churn"), 0.1, key=wkey("churn")))
     keep("nrr", st.sidebar.slider(
-        "Net revenue retention (%)", 90, 140, lv("nrr"), key="lever_nrr"))
+        "Net revenue retention (%)", 90, 140, lv("nrr"), key=wkey("nrr")))
     keep("price", st.sidebar.slider(
-        "Price increase at renewal, from Oct 1 (%)", 0, 25, lv("price"), key="lever_price"))
+        "Price increase at renewal, from Oct 1 (%)", 0, 25, lv("price"), key=wkey("price")))
 
     st.sidebar.markdown("_Sales capacity_")
-    keep("aes", st.sidebar.slider("New AE hires", 0, 12, lv("aes"), key="lever_aes"))
+    keep("aes", st.sidebar.slider("New AE hires", 0, 12, lv("aes"), key=wkey("aes")))
     start_options = month_range("2026-09", "2027-06")
     keep("ae_start", st.sidebar.selectbox(
         "AE start month", start_options,
-        index=start_options.index(lv("ae_start")), key="lever_ae_start"))
+        index=start_options.index(lv("ae_start")), key=wkey("ae_start")))
     st.sidebar.caption(esc_md(
         f"{int(assumptions['ae_ramp_months'])}-month ramp to "
         f"{money(float(assumptions['ae_quota_net_new_mrr']), 0)}/mo quota. A rep books "
         f"nothing in month 1, so a start date late in the year contributes nothing to FY26."
+    ))
+
+    _arpu = summarize_actuals().blended_arpu
+    _company_logos = summarize_actuals().new_logos_trailing_3mo
+    keep("ae_logos", st.sidebar.slider(
+        "New logos each AE lands / month", 0.0, 12.0, float(lv("ae_logos")), 0.5,
+        key=wkey("ae_logos"),
+        help="The board plan credits each rep with about 10.5 logos a month. The whole "
+             "company lands 11. Drag this down to whatever you actually believe a new "
+             "rep will close, and watch the plan change shape.",
+    ))
+    _q = lv("ae_logos") * _arpu
+    _plan_logos = LEVER_DEFAULTS["ae_logos"]
+    st.sidebar.caption(esc_md(
+        f"= {money(_q, 0)}/mo of quota per rep. "
+        + (f"Board plan is {_plan_logos:.1f}. "
+           if abs(lv("ae_logos") - _plan_logos) > 0.05 else "This is the board plan. ")
+        + f"{lv('aes')} reps at this rate add "
+        f"{lv('aes') * lv('ae_logos'):.0f} logos/mo against "
+        f"{_company_logos:.0f} company-wide today."
     ))
 
     st.sidebar.markdown("_Retention_")
@@ -341,18 +387,18 @@ if show_levers:
             f"Haircut {money(float(assumptions['enterprise_renewals_at_risk_mrr']), 0)} at-risk "
             f"enterprise MRR (Nov)"
         ),
-        value=lv("haircut"), key="lever_haircut"))
+        value=lv("haircut"), key=wkey("haircut")))
 
     st.sidebar.markdown("_Acquisition_")
     keep("acquire", st.sidebar.checkbox(
-        f"Acquire {target['target_name']}", value=lv("acquire"), key="lever_acquire"))
+        f"Acquire {target['target_name']}", value=lv("acquire"), key=wkey("acquire")))
     keep("acq_price_m", st.sidebar.slider(
         "Purchase price ($M)", 4.0, 10.0, lv("acq_price_m"), 0.1,
-        key="lever_acq_price", disabled=not lv("acquire")))
+        key=wkey("acq_price"), disabled=not lv("acquire")))
     st.sidebar.markdown("_Financing_")
     keep("facility_k", st.sidebar.slider(
         "Undrawn facility available ($K)", 0, 6000, lv("facility_k"), 250,
-        key="lever_facility",
+        key=wkey("facility"),
         help="The plan of record has $500K left on the venture line. That is thin against "
              "$12M of ARR, and it makes borrow-versus-don't a choice you cannot actually "
              "explore. Raise it to test what a larger facility would buy — the default is "
@@ -362,7 +408,7 @@ if show_levers:
     keep("acq_draw_k", st.sidebar.slider(
         "Funded from the facility ($K)", 0, max(draw_cap, 1),
         min(lv("acq_draw_k"), draw_cap), 50,
-        key="lever_acq_draw", disabled=not lv("acquire") or draw_cap == 0))
+        key=wkey("acq_draw"), disabled=not lv("acquire") or draw_cap == 0))
     if lv("acquire"):
         st.sidebar.caption(esc_md(
             f"Balance out of cash: {money(lv('acq_price_m') * 1e6 - lv('acq_draw_k') * 1e3)}. "
@@ -392,6 +438,14 @@ haircut, acquire = lv("haircut"), lv("acquire")
 acq_price = lv("acq_price_m") * 1e6
 acq_draw = lv("acq_draw_k") * 1e3
 facility = lv("facility_k") * 1e3
+# Snap to the filed figure when the slider is untouched. The UI shows logos to
+# one decimal, so converting back through ARPU lands ~$22 off the CSV quota —
+# enough to make scenario != defaults forever and leave the "changed" overlay
+# permanently on, which is worse than the rounding it came from.
+if abs(lv("ae_logos") - LEVER_DEFAULTS["ae_logos"]) < 1e-9:
+    ae_quota = float(assumptions["ae_quota_net_new_mrr"])
+else:
+    ae_quota = lv("ae_logos") * summarize_actuals().blended_arpu
 
 st.sidebar.divider()
 api_key = st.sidebar.text_input(
@@ -439,6 +493,7 @@ scenario = Scenario(
     acquisition_price=float(acq_price),
     acquisition_debt_draw=float(acq_draw),
     debt_facility=float(facility),
+    ae_quota_net_new_mrr=float(ae_quota),
 )
 
 actuals = summarize_actuals()
@@ -474,15 +529,16 @@ if screen.startswith("1"):
     )
 
     st.markdown(esc_md(
-        "This is a forecasting tool built by Copperline's CFO for the leadership team "
-        "and the board. Eight months of FY26 actuals are on the books; September "
+        "I built this so we can settle the growth question together rather than in a "
+        "spreadsheet I email round afterwards. Eight months of FY26 actuals are on the books; September "
         "through December remain, plus the FY27 plan to set. The board wants "
         f"{money(actuals.fy26_target)} exit ARR this year and "
         f"{money(float(assumptions['fy27_arr_target']))} next — roughly 49% growth — and the "
         "CEO wants to accelerate to get there, by hiring account executives, by acquiring "
         f"{target['target_name']}, or both.\n\n"
-        "**This page is the fixed starting point: the present day plan, before any decision.** "
-        "Nothing here moves.\n\n"
+        "**Read this page top to bottom — it is where we actually are, and nothing on it "
+        "moves.** At the bottom you will find how to use the other two screens to test a "
+        "way out and turn it into a memo for the board.\n\n"
         f"**The clock is the constraint.** Q4 opens {days_to('2026-10-01')} days from the close of "
         f"these books, and a renewal price increase only bites from Oct 1. "
         f"{target['target_name']} closes {days_to('2026-11-01')} days out, on "
@@ -667,35 +723,34 @@ if screen.startswith("1"):
     st.markdown("**Monthly net burn**")
     st.plotly_chart(charts.burn_chart(por_series), use_container_width=True)
     st.divider()
-    st.markdown("### What worries me about this plan")
+    st.markdown("### What worries me about the present day plan")
     st.caption(
-        "From the CFO, before anyone has changed anything. These are checks that run on "
-        "arithmetic, not opinions — each one is a place where two things the company has "
-        "already committed to cannot both be true."
+        "Before any of us has changed anything. These run on maths, not opinion — each one "
+        "is a place where two things we have already committed to cannot both be true."
     )
     st.markdown(esc_md(
-        "Read in order. The first is the one that decides the year: **we do not have the "
+        "Read them in order. The first decides our year: **we do not have the "
         "people to book what Q4 needs, and hiring now cannot fix it in time** — a rep hired "
         "today is not at full quota until the quarter is over. The second is revenue we are "
-        "already counting that may not arrive; the sidebar has a toggle to take that "
-        "haircut and watch what it does. The last two are about the sales assumption itself, "
+        "already counting that may not arrive — the Decision Studio has a toggle to take "
+        "that haircut and see what it costs us. The last two are about the sales assumption itself, "
         "and they pull in opposite directions: the quota is too small to rescue Q4 and too "
         "large to believe for a full year. At most one of those can be right."
     ))
     render_flags(por_flags, por_verdict)
 
     st.divider()
-    st.markdown("### What to do with this")
+    st.markdown("### How to use this tool")
     st.markdown(esc_md(
-        f"**1 · Present Day** is where we are, and it does not move.\n\n"
+        f"**1 · Present Day** — this page. Where we are, fixed.\n\n"
         f"**2 · Decision Studio** is where you change it. Move new logos, churn, retention "
         f"and price for the trajectory; move AE headcount and start date for capacity; "
         f"toggle the {target['target_name']} acquisition and how much of it is borrowed. "
         f"Everything recomputes, and the present day plan stays on every chart as a dotted "
         f"blue line so you can see what your choice actually bought.\n\n"
-        f"**3 · Final Decision** turns the scenario you settled on into a memo for the board. "
-        f"Generate one per scenario if you want to put options side by side.\n\n"
-        f"The decision has to be made before {str(target['expected_close'])[:10]} — "
+        f"**3 · Final Decision** — turn the scenario you settled on into a memo for the "
+        f"board. Generate one per scenario if you want options side by side.\n\n"
+        f"We have to decide before {str(target['expected_close'])[:10]} — "
         f"{days_to('2026-11-01')} days — or the acquisition question answers itself."
     ))
 
@@ -856,7 +911,11 @@ elif screen.startswith("2"):
         )
 
     st.divider()
-    st.markdown("### Plan integrity")
+    st.markdown("### Where your changes leave plan integrity")
+    st.caption(
+        "Re-run against the scenario above, not the present day plan. A flag that "
+        "clears here is one your choice actually fixed."
+    )
     render_flags(flags, verdict)
 
 # ============================================================================
